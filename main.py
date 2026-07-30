@@ -3,7 +3,7 @@ from openai import OpenAI, Stream
 from dotenv import load_dotenv
 from typing import List, Dict
 from openai.types.chat import ChatCompletionChunk
-from serpapi import Client
+
 
 load_dotenv()
 
