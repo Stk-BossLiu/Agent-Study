@@ -1,6 +1,8 @@
 from datetime import datetime
+import json
 from main import HelloAgentsLLM
 
+from tools import caculator
 from tools.main import ToolExcutor
 import re
 import os
@@ -22,12 +24,25 @@ REACT_PROMPT_TEMPLATE = """
 {time}
 
 请严格按照以下格式进行回应:
+{{
+    "Thought": "你的思考过程，用于分析问题、拆解任务和规划下一步行动。",
+    "Action": {{
+        "isFinish": bool,
+        "result": str,
+        "toolName": str,
+        "toolInput": str,
+    }}
+}}
 
-Thought: 你的思考过程，用于分析问题、拆解任务和规划下一步行动。
-Action: 你决定采取的行动，必须是以下格式之一:
-- `{{tool_name}}[{{tool_input}}]`:调用一个可用工具。
-- `Finish[最终答案]`:当你认为已经获得最终答案时。
-- 当你收集到足够的信息，能够回答用户的最终问题时，你必须在Action:字段后使用 Finish[最终答案] 来输出最终答案。
+Action中各字段解释
+- isFinish: 是否已经获得最终答案
+- result: 执行结果
+- toolName: 工具名称
+- toolInput: 工具输入
+- 当你收集到足够的信息，isFinish为True。
+- 如果没有使用工具，toolName为空，toolInput为空。
+
+涉及到需要数学计算时，必须优先调用工具以获得更加精确的结果。
 
 现在，请开始解决以下问题:
 Question: {question}
@@ -63,34 +78,25 @@ class ReActAgent:
             if not action:
                 print("没有action")
                 break
-            if action.startswith("Finish"):
+
+            if action["isFinish"]:
                 # Finish -> 最终答案
-                final_ans = re.match(r"Finish\[(.*)\]", action, re.DOTALL).group(1)
+                final_ans = action["result"]
                 print(f"最终答案: {final_ans}")
                 return final_ans
-            tool_name, tool_input = self._parseAction(action)
-            tool_function = self.tool_executor.getTool(tool_name)
-            tool_result = tool_function(tool_input)
+            tool_name, tool_input = action["toolName"], action["toolInput"]
+            tool_function = self.tool_executor.getTool(tool_name) or ""
+            tool_result = tool_function(tool_input) or ""
             if tool_result:
                 self.history.append(f"Action: {action}\n Result: {tool_result}")
         return None
 
     def _parseOutput(self, text: str) -> str:
         # Thought:-> Action
-        thought_match = re.search(
-            r"Thought:\s*(.*?)(?=\nAction:|$)", text, re.DOTALL
-        )  # DOTALL 表示.匹配任意字符，包括换行符
-        # Action:-> end
-        action_match = re.search(r"Action:\s*(.*?)$", text, re.DOTALL)
-        thought = thought_match.group(1).strip() if thought_match else None
-        action = action_match.group(1).strip() if action_match else None
+        data = json.loads(text)
+        thought = data.get("Thought")
+        action = data.get("Action")
         return thought, action
-
-    def _parseAction(self, action_text: str) -> str:
-        action_parts = re.match(r"(\w+)\[(.*)\]", action_text, re.DOTALL)
-        if action_parts:
-            return action_parts.group(1), action_parts.group(2)
-        return None, None
 
 
 if __name__ == "__main__":
@@ -101,6 +107,7 @@ if __name__ == "__main__":
     )
     tool_executor = ToolExcutor()
     tool_executor.registerTool("Search", description, search)
+    tool_executor.registerTool("Caculator", description, caculator.caculate)
     react_agent = ReActAgent(llm_client, tool_executor, 10)
     question = input("请输入问题: ")
     react_agent.run(question)
