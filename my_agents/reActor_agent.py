@@ -1,3 +1,4 @@
+from datetime import datetime
 from main import HelloAgentsLLM
 
 from tools.main import ToolExcutor
@@ -16,6 +17,9 @@ REACT_PROMPT_TEMPLATE = """
 
 可用工具如下:
 {tools}
+
+当前北京时间:
+{time}
 
 请严格按照以下格式进行回应:
 
@@ -47,6 +51,7 @@ class ReActAgent:
             current_step += 1
             prompt = REACT_PROMPT_TEMPLATE.format(
                 tools=self.tool_executor.getAvailableTools(),
+                time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 question=question,
                 history="\n".join(self.history),
             )
